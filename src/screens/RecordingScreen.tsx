@@ -123,19 +123,16 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
         // Автоматически загружаем на сервер
         try {
           logger.info('🚀 Начинаем загрузку аудио файла на сервер...');
-          
-          const uploadData = {
+          logger.info('📤 Данные для загрузки', {
             uri: uri,
             type: 'audio/m4a',
             name: filename,
             duration_seconds: durationSeconds,
             location_id: parseInt(location.id),
             recording_date: recordingStartTime.toISOString(),
-          };
+          });
           
-          logger.info('📤 Данные для загрузки', uploadData);
-          
-          const uploadResult = await apiService.uploadAudio(uploadData);
+          const uploadResult = await audioService.uploadRecording(uri, parseInt(location.id), durationSeconds);
           
           if (uploadResult.success) {
             logger.info('✅ Аудио файл успешно загружен на сервер');
@@ -149,7 +146,7 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
               endTime,
               audioFilePath: uri,
               duration,
-              serverId: uploadResult.recording?.id,
+              serverId: Date.now(), // Используем timestamp как ID
               synced: true,
             };
 

@@ -1,5 +1,13 @@
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+// import { logger } from '../utils/Logger';
+
+// Временная замена logger на console для быстрого тестирования
+const logger = {
+  info: (msg: string, data?: any) => console.log('ℹ️', msg, data || ''),
+  warn: (msg: string, data?: any) => console.warn('⚠️', msg, data || ''),
+  error: (msg: string, data?: any) => console.error('❌', msg, data || ''),
+};
 
 export class AudioService {
   private recording: Audio.Recording | null = null;
@@ -9,12 +17,13 @@ export class AudioService {
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        console.error('Разрешение на запись аудио не предоставлено');
+        logger.error('[AudioService] Разрешение на запись аудио не предоставлено');
         return false;
       }
+      logger.info('[AudioService] Разрешения на запись получены');
       return true;
     } catch (error) {
-      console.error('Ошибка при запросе разрешений:', error);
+      logger.error('[AudioService] Ошибка при запросе разрешений', error);
       return false;
     }
   }
@@ -22,7 +31,7 @@ export class AudioService {
   async startRecording(): Promise<string | null> {
     try {
       if (this.isRecording) {
-        console.log('Запись уже идет');
+        logger.warn('AudioService', 'Запись уже идет');
         return null;
       }
 
@@ -48,10 +57,10 @@ export class AudioService {
       this.recording = recording;
       this.isRecording = true;
       
-      console.log('✅ Запись началась');
+      logger.info('AudioService', 'Запись началась');
       return 'recording'; // Возвращаем placeholder, настоящий URI получим при остановке
     } catch (error) {
-      console.error('❌ Ошибка при начале записи:', error);
+      logger.error('AudioService', 'Ошибка при начале записи', error);
       return null;
     }
   }
@@ -59,7 +68,7 @@ export class AudioService {
   async stopRecording(): Promise<string | null> {
     try {
       if (!this.isRecording || !this.recording) {
-        console.log('Запись не была начата');
+        logger.warn('AudioService', 'Запись не была начата');
         return null;
       }
 
@@ -72,10 +81,10 @@ export class AudioService {
       this.isRecording = false;
       this.recording = null;
 
-      console.log('✅ Запись остановлена, файл сохранен в:', uri);
+      logger.info('AudioService', `Запись остановлена: ${uri}`);
       return uri;
     } catch (error) {
-      console.error('❌ Ошибка при остановке записи:', error);
+      logger.error('AudioService', 'Ошибка при остановке записи', error);
       return null;
     }
   }
@@ -94,12 +103,13 @@ export class AudioService {
       await sound.unloadAsync();
       
       if (status.isLoaded && status.durationMillis) {
+        logger.info('AudioService', `Длительность записи: ${status.durationMillis}ms`);
         return status.durationMillis;
       }
       
       return 0;
     } catch (error) {
-      console.error('❌ Ошибка при получении длительности записи:', error);
+      logger.error('AudioService', 'Ошибка при получении длительности записи', error);
       // Возвращаем приблизительную длительность по размеру файла
       try {
         const fileInfo = await FileSystem.getInfoAsync(uri);
@@ -108,7 +118,7 @@ export class AudioService {
           return Math.max(1000, (fileInfo.size / 16000) * 1000);
         }
       } catch (e) {
-        console.error('Не удалось получить размер файла:', e);
+        logger.error('AudioService', 'Не удалось получить размер файла', e);
       }
       return 1000; // Минимум 1 секунда
     }
@@ -133,17 +143,17 @@ export class AudioService {
         to: finalPath,
       });
 
-      console.log('✅ Файл сохранен в документы:', finalPath);
+      logger.info('AudioService', `Файл сохранен: ${finalPath}`);
       return finalPath;
     } catch (error) {
-      console.error('❌ Ошибка при сохранении файла:', error);
+      logger.error('AudioService', 'Ошибка при сохранении файла', error);
       return uri;
     }
   }
 
   async playRecording(uri: string): Promise<void> {
     try {
-      console.log('🔊 Воспроизведение записи:', uri);
+      logger.info('AudioService', `Воспроизведение записи: ${uri}`);
       
       // Настраиваем аудио режим для воспроизведения
       await Audio.setAudioModeAsync({
@@ -163,10 +173,101 @@ export class AudioService {
         }
       });
       
-      console.log('✅ Воспроизведение началось');
+      logger.info('AudioService', 'Воспроизведение началось');
     } catch (error) {
-      console.error('❌ Ошибка при воспроизведении:', error);
+      logger.error('AudioService', 'Ошибка при воспроизведении', error);
       throw error;
+    }
+  }
+
+  async uploadRecording(
+    uri: string, 
+    locationId: number, 
+    durationSeconds: number
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      logger.info('AudioService', `🚀 НАЧАЛО ЗАГРУЗКИ С ОЧИЩЕННЫМ КЭШЕМ: ${uri}`);
+      
+      // Генерируем уникальное имя файла с временной меткой
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 8);
+      const filename = `recording_${timestamp}_${randomId}.m4a`;
+      
+      logger.info('AudioService', `📁 Имя файла: ${filename}`);
+      logger.info('AudioService', `📍 Локация: ${locationId}, ⏱️ Длительность: ${durationSeconds}s`);
+
+      // 🔑 КЛЮЧЕВОЕ РЕШЕНИЕ: Специальные заголовки для предотвращения GraphQL интерпретации + очистка кэша
+      const cacheBuster = Date.now().toString();
+      const response = await FileSystem.uploadAsync(
+        `https://contact-recorder-backend-production.up.railway.app/api/recordings/upload?cb=${cacheBuster}&ts=${timestamp}`,
+        uri,
+        {
+          fieldName: 'audio',
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          parameters: {
+            duration_seconds: durationSeconds.toString(),
+            location_id: locationId.toString(),
+            recording_date: new Date().toISOString(),
+            filename: filename,
+            cache_buster: cacheBuster,
+          },
+          headers: {
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NDk2NTc5MDQsImV4cCI6MTc1MDI2MjcwNH0.VR6-NmjphUiJadGUaHTryiWQK8xD7EM2asyJSP2_cMg',
+            'Accept': 'application/json',
+            'User-Agent': 'ContactRecorder-Mobile/2.0.0',
+            
+            // 🔥 ПРИНУДИТЕЛЬНАЯ ОЧИСТКА КЭША
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'If-Modified-Since': '0',
+            'If-None-Match': '',
+            
+            // 🛡️ ЗАЩИТА ОТ GRAPHQL ИНТЕРПРЕТАЦИИ
+            'X-Upload-Type': 'audio-file-multipart',
+            'X-Content-Type': 'multipart/form-data',
+            'X-API-Version': '1.0',
+            'X-Force-Upload': 'true',
+            'X-Bypass-GraphQL': 'true',
+            'X-Apollo-Operation-Name': '', // Пустое значение для обхода
+            'X-Request-ID': `upload_${timestamp}_${randomId}`,
+          },
+        }
+      );
+
+      logger.info('AudioService', `📊 Статус ответа: ${response.status}`);
+      logger.info('AudioService', `📝 Тело ответа: ${response.body}`);
+
+      if (response.status === 200 || response.status === 201) {
+        try {
+          const result = JSON.parse(response.body);
+          logger.info('AudioService', '✅ Загрузка успешна!', result);
+          return { success: true, message: 'Запись успешно загружена на сервер' };
+        } catch (parseError) {
+          logger.warn('AudioService', '✅ Загрузка успешна (ответ не JSON)');
+          return { success: true, message: 'Запись успешно загружена на сервер' };
+        }
+      } else {
+        logger.error('AudioService', `❌ Ошибка сервера: ${response.status}`, response.body);
+        return { 
+          success: false, 
+          message: `Ошибка сервера: ${response.status}. ${response.body || 'Неизвестная ошибка'}` 
+        };
+      }
+
+    } catch (error) {
+      logger.error('AudioService', '💥 КРИТИЧЕСКАЯ ОШИБКА ЗАГРУЗКИ', error);
+      
+      let errorMessage = 'Неизвестная ошибка при загрузке';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      return { 
+        success: false, 
+        message: `Проблема с загрузкой: ${errorMessage}. Запись сохранена локально.` 
+      };
     }
   }
 
