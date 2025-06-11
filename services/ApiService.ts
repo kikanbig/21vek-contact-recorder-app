@@ -194,18 +194,18 @@ class ApiService {
         
         const formData = new FormData();
         
-        // Добавляем аудио файл
+        // Сначала добавляем метаданные
+        formData.append('duration_seconds', recordingData.duration_seconds.toString());
+        formData.append('location_id', recordingData.location_id.toString());
+        formData.append('recording_date', recordingData.recording_date);
+        formData.append('filename', recordingData.name);
+        
+        // Потом добавляем аудио файл (должен быть последним!)
         formData.append('audio', {
           uri: recordingData.uri,
           type: recordingData.type,
           name: recordingData.name,
         } as any);
-        
-        // Добавляем метаданные
-        formData.append('duration_seconds', recordingData.duration_seconds.toString());
-        formData.append('location_id', recordingData.location_id.toString());
-        formData.append('recording_date', recordingData.recording_date);
-        formData.append('filename', recordingData.name);
 
         const url = `${API_BASE_URL}/api/recordings/upload`;
         
@@ -241,7 +241,8 @@ class ApiService {
           hasDuration: formData.has('duration_seconds'),
           hasLocation: formData.has('location_id'),
           hasDate: formData.has('recording_date'),
-          hasFilename: formData.has('filename')
+          hasFilename: formData.has('filename'),
+          fieldOrder: 'ИСПРАВЛЕН: метаданные -> файл'
         });
 
         const response = await fetch(url, {
