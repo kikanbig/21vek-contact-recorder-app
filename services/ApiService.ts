@@ -1,3 +1,5 @@
+import { logger } from '../src/utils/Logger';
+
 // API Service для работы с Backend
 const API_BASE_URL = 'https://contact-recorder-backend-production.up.railway.app';
 // const API_BASE_URL = 'http://localhost:3000'; // Для локальной разработки
@@ -149,22 +151,26 @@ class ApiService {
     recording_date: string;
   }): Promise<{ success: boolean; message: string; recording?: any }> {
     
+    logger.info('🚀 Начинаем загрузку аудио файла', recordingData);
+    
     // Проверяем наличие токена авторизации
     if (!this.token) {
-      console.warn('❌ Отсутствует токен авторизации, пытаемся авторизоваться...');
+      logger.warn('❌ Отсутствует токен авторизации, пытаемся авторизоваться...');
       try {
         const authResponse = await this.login('admin', 'admin123');
         if (!authResponse.success) {
           throw new Error('Не удалось авторизоваться для загрузки файла');
         }
-        console.log('✅ Успешная авторизация для загрузки файла');
+        logger.info('✅ Успешная авторизация для загрузки файла');
       } catch (authError) {
-        console.error('❌ Ошибка авторизации:', authError);
+        logger.error('❌ Ошибка авторизации', authError);
         return {
           success: false,
           message: 'Ошибка авторизации: ' + (authError as Error).message
         };
       }
+    } else {
+      logger.info('✅ Токен авторизации присутствует');
     }
     
     const maxRetries = 3;
@@ -172,7 +178,7 @@ class ApiService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`📤 Попытка загрузки ${attempt}/${maxRetries}...`);
+        logger.info(`📤 Попытка загрузки ${attempt}/${maxRetries}...`);
         
         const formData = new FormData();
         
@@ -196,12 +202,13 @@ class ApiService {
           headers['Authorization'] = `Bearer ${this.token}`;
         }
 
-        console.log('📤 URL:', url);
-        console.log('📤 Данные:', {
+        logger.info('📤 Отправка данных', {
+          url,
           fileName: recordingData.name,
           duration: recordingData.duration_seconds,
           locationId: recordingData.location_id,
-          hasToken: !!this.token
+          hasToken: !!this.token,
+          tokenPrefix: this.token?.substring(0, 20) + '...'
         });
         
         // Проверяем сетевое подключение
@@ -214,7 +221,7 @@ class ApiService {
           throw new Error(`Server health check failed: ${healthCheck.status}`);
         }
         
-        console.log('✅ Сервер доступен, отправляем файл...');
+        logger.info('✅ Сервер доступен, отправляем файл...');
 
         const response = await fetch(url, {
           method: 'POST',
@@ -222,31 +229,42 @@ class ApiService {
           body: formData
         });
 
-        console.log('📥 Статус ответа:', response.status, response.statusText);
+        logger.info('📥 Получен ответ сервера', {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok
+        });
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('❌ HTTP ошибка:', response.status, errorText);
+          logger.error('❌ HTTP ошибка', {
+            status: response.status,
+            statusText: response.statusText,
+            errorText
+          });
           throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
 
         const result = await response.json();
-        console.log('✅ Успешный ответ сервера:', result);
+        logger.info('✅ Успешный ответ сервера', result);
         return result;
         
       } catch (error) {
         lastError = error;
-        console.error(`❌ Ошибка попытки ${attempt}:`, error);
+        logger.error(`❌ Ошибка попытки ${attempt}`, {
+          error: (error as Error).message,
+          stack: (error as Error).stack
+        });
         
         if (attempt < maxRetries) {
           const delay = attempt * 2000; // 2, 4 секунды
-          console.log(`⏳ Ожидание ${delay}ms перед следующей попыткой...`);
+          logger.info(`⏳ Ожидание ${delay}ms перед следующей попыткой...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
     }
 
-    console.error('❌ Все попытки загрузки неудачны');
+    logger.error('❌ Все попытки загрузки неудачны', lastError);
     throw lastError;
   }
 

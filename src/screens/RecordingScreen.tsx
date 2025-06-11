@@ -12,15 +12,17 @@ import { User, Location, Recording } from '../types';
 import { AudioService } from '../services/AudioService';
 import { StorageService } from '../services/StorageService';
 import { apiService } from '../services/ApiService';
+import { logger } from '../utils/Logger';
 
 interface RecordingScreenProps {
   user: User;
   location: Location;
   onLogout: () => void;
   onShowRecordings: () => void;
+  onShowLogs?: () => void;
 }
 
-export default function RecordingScreen({ user, location, onLogout, onShowRecordings }: RecordingScreenProps) {
+export default function RecordingScreen({ user, location, onLogout, onShowRecordings, onShowLogs }: RecordingScreenProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioService] = useState(new AudioService());
   const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
@@ -84,7 +86,7 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
       if (uri) {
         setIsRecording(true);
         setRecordingStartTime(new Date());
-        console.log('✅ Запись началась');
+        logger.info('✅ Запись началась');
       } else {
         Alert.alert('Ошибка', 'Не удалось начать запись');
       }
@@ -106,7 +108,7 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const filename = `recording_${user.username}_${timestamp}.m4a`;
         
-        console.log('📁 Запись завершена:', {
+        logger.info('📁 Запись завершена:', {
           filename,
           duration: durationSeconds,
           location: location.name,
@@ -120,7 +122,7 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
 
         // Автоматически загружаем на сервер
         try {
-          console.log('📤 Начинаем загрузку аудио файла на сервер...');
+          logger.info('🚀 Начинаем загрузку аудио файла на сервер...');
           
           const uploadData = {
             uri: uri,
@@ -131,12 +133,12 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
             recording_date: recordingStartTime.toISOString(),
           };
           
-          console.log('📤 Данные для загрузки:', uploadData);
+          logger.info('📤 Данные для загрузки', uploadData);
           
           const uploadResult = await apiService.uploadAudio(uploadData);
           
           if (uploadResult.success) {
-            console.log('✅ Аудио файл успешно загружен на сервер');
+            logger.info('✅ Аудио файл успешно загружен на сервер');
             
             // Сохраняем запись в локальное хранилище для резервной копии
             const recording: Recording = {
@@ -164,7 +166,7 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
           }
           
         } catch (serverError) {
-          console.error('❌ Ошибка загрузки на сервер:', serverError);
+          logger.error('❌ Ошибка загрузки на сервер', serverError);
           
           // Сохраняем локально если не удалось загрузить на сервер
           const savedPath = await audioService.saveRecordingToDocuments(uri, filename);
@@ -208,7 +210,7 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
     }
 
     try {
-      console.log('🔊 Тестируем воспроизведение:', lastRecordingUri);
+      logger.info('🔊 Тестируем воспроизведение:', lastRecordingUri);
       await audioService.playRecording(lastRecordingUri);
       Alert.alert('✅ Воспроизведение началось', 'Проверьте звук в наушниках или динамике');
     } catch (error) {
@@ -305,6 +307,11 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
           <TouchableOpacity style={styles.recordingsButton} onPress={() => onShowRecordings()}>
             <Text style={styles.recordingsButtonText}>Записи</Text>
           </TouchableOpacity>
+          {onShowLogs && (
+            <TouchableOpacity style={styles.logsButton} onPress={() => onShowLogs()}>
+              <Text style={styles.logsButtonText}>Логи</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutButtonText}>Выйти</Text>
           </TouchableOpacity>
@@ -538,5 +545,16 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 22,
+  },
+  logsButton: {
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  logsButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

@@ -4,10 +4,11 @@ import { View, StyleSheet } from 'react-native';
 import LoginScreen from './src/screens/LoginScreen';
 import RecordingScreen from './src/screens/RecordingScreen';
 import RecordingsListScreen from './src/screens/RecordingsListScreen';
+import LogsScreen from './src/screens/LogsScreen';
 import { User, Location } from './src/types';
 import { StorageService } from './src/services/StorageService';
 
-type Screen = 'login' | 'recording' | 'recordings';
+type Screen = 'login' | 'recording' | 'recordings' | 'logs';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -70,7 +71,8 @@ export default function App() {
             user={user} 
             location={location} 
             onLogout={handleLogout}
-            onShowRecordings={handleShowRecordings}
+            onShowRecordings={() => setCurrentScreen('recordings')}
+            onShowLogs={() => setCurrentScreen('logs')}
           />
         ) : <LoginScreen onLogin={handleLogin} />;
       case 'recordings':
@@ -80,6 +82,8 @@ export default function App() {
             onBack={handleBackToRecording} 
           />
         ) : <LoginScreen onLogin={handleLogin} />;
+      case 'logs':
+        return <LogsScreen onClose={() => setCurrentScreen('recording')} />;
       default:
         return <LoginScreen onLogin={handleLogin} />;
     }
