@@ -11,7 +11,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
-import { useAudioPlayer } from 'expo-audio';
+import { AudioService } from '../services/AudioService';
 import { Recording, SAMPLE_LOCATIONS, User } from '../types';
 import { StorageService } from '../services/StorageService';
 import { apiService } from '../../services/ApiService';
@@ -37,6 +37,7 @@ export default function RecordingsListScreen({ user, onBack }: RecordingsListScr
     fileName: string;
     transcribedAt: string;
   } | null>(null);
+  const [audioService] = useState(new AudioService());
 
   useEffect(() => {
     loadRecordings();
@@ -73,16 +74,22 @@ export default function RecordingsListScreen({ user, onBack }: RecordingsListScr
         return;
       }
 
+      console.log('🔊 Воспроизведение записи:', recording.audioFilePath);
+      
       // Устанавливаем ID воспроизводимой записи
       setPlayingId(recording.id);
 
-      // Симуляция воспроизведения (expo-audio требует компонента)
+      // Воспроизводим через AudioService
+      await audioService.playRecording(recording.audioFilePath);
+      
+      // Автоматически убираем индикатор воспроизведения через 3 секунды
       setTimeout(() => {
         setPlayingId(null);
-      }, 3000); // Останавливаем через 3 секунды
+      }, 3000);
 
     } catch (error) {
-      console.error('Ошибка при воспроизведении:', error);
+      console.error('❌ Ошибка при воспроизведении:', error);
+      setPlayingId(null);
       Alert.alert('Ошибка', 'Не удалось воспроизвести запись');
     }
   };

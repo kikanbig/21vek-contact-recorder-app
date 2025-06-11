@@ -27,6 +27,7 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [lastRecordingUri, setLastRecordingUri] = useState<string | null>(null);
 
   useEffect(() => {
     initializeAudio();
@@ -114,6 +115,7 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
 
         setIsRecording(false);
         setRecordingStartTime(null);
+        setLastRecordingUri(uri); // Сохраняем URI для тестирования воспроизведения
         setIsUploading(true);
 
         // Автоматически загружаем на сервер
@@ -128,6 +130,8 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
             location_id: parseInt(location.id),
             recording_date: recordingStartTime.toISOString(),
           };
+          
+          console.log('📤 Данные для загрузки:', uploadData);
           
           const uploadResult = await apiService.uploadAudio(uploadData);
           
@@ -194,6 +198,22 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
       console.error('❌ Ошибка при остановке записи:', error);
       Alert.alert('Ошибка', 'Не удалось сохранить запись');
       setIsUploading(false);
+    }
+  };
+
+  const testPlayback = async () => {
+    if (!lastRecordingUri) {
+      Alert.alert('Ошибка', 'Нет записи для воспроизведения');
+      return;
+    }
+
+    try {
+      console.log('🔊 Тестируем воспроизведение:', lastRecordingUri);
+      await audioService.playRecording(lastRecordingUri);
+      Alert.alert('✅ Воспроизведение началось', 'Проверьте звук в наушниках или динамике');
+    } catch (error) {
+      console.error('❌ Ошибка воспроизведения:', error);
+      Alert.alert('❌ Ошибка воспроизведения', 'Не удалось воспроизвести запись');
     }
   };
 
@@ -277,6 +297,11 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
           <Text style={styles.locationAddress}>{location.address}</Text>
         </View>
         <View style={styles.headerButtons}>
+          {lastRecordingUri && (
+            <TouchableOpacity style={styles.playButton} onPress={testPlayback}>
+              <Text style={styles.playButtonText}>🔊 Тест</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.recordingsButton} onPress={() => onShowRecordings()}>
             <Text style={styles.recordingsButtonText}>Записи</Text>
           </TouchableOpacity>
@@ -400,6 +425,17 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     color: 'white',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  playButton: {
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  playButtonText: {
+    color: 'white',
+    fontSize: 12,
     fontWeight: '600',
   },
   content: {
