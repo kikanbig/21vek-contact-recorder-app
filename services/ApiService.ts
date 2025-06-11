@@ -264,33 +264,69 @@ class ApiService {
           fieldOrder: 'ИСПРАВЛЕН: метаданные -> файл'
         });
 
-        const response = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: formData,
-          // Дополнительные опции для правильной обработки multipart/form-data
-          cache: 'no-cache',
-          redirect: 'follow'
+        // Используем XMLHttpRequest вместо fetch для обхода проблемы с GraphQL интерпретацией
+        logger.info('📤 Отправляем файл через XMLHttpRequest...');
+        
+        const result = await new Promise<any>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          
+          xhr.open('POST', url);
+          
+          // Устанавливаем заголовки
+          if (this.token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${this.token}`);
+          }
+          // НЕ устанавливаем Content-Type - пусть браузер установит автоматически
+          
+          xhr.onload = () => {
+            logger.info('📥 XMLHttpRequest ответ получен', {
+              status: xhr.status,
+              statusText: xhr.statusText,
+              responseLength: xhr.responseText.length
+            });
+            
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const responseData = JSON.parse(xhr.responseText);
+                resolve(responseData);
+              } catch (parseError) {
+                logger.error('❌ Ошибка парсинга ответа', {
+                  error: (parseError as Error).message,
+                  responseText: xhr.responseText.substring(0, 500)
+                });
+                reject(new Error('Ошибка парсинга ответа сервера'));
+              }
+            } else {
+              logger.error('❌ HTTP ошибка в XMLHttpRequest', {
+                status: xhr.status,
+                statusText: xhr.statusText,
+                responseText: xhr.responseText.substring(0, 500)
+              });
+              reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+            }
+          };
+          
+          xhr.onerror = () => {
+            logger.error('❌ Ошибка сети в XMLHttpRequest', {
+              status: xhr.status,
+              statusText: xhr.statusText
+            });
+            reject(new Error('Ошибка сети при отправке файла'));
+          };
+          
+          xhr.ontimeout = () => {
+            logger.error('❌ Таймаут XMLHttpRequest');
+            reject(new Error('Таймаут при отправке файла'));
+          };
+          
+          // Устанавливаем таймаут 60 секунд
+          xhr.timeout = 60000;
+          
+          // Отправляем FormData
+          xhr.send(formData);
         });
 
-        logger.info('📥 Получен ответ сервера', {
-          status: response.status,
-          statusText: response.statusText,
-          ok: response.ok
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          logger.error('❌ HTTP ошибка', {
-            status: response.status,
-            statusText: response.statusText,
-            errorText
-          });
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-
-        const result = await response.json();
-        logger.info('✅ Успешный ответ сервера', result);
+        logger.info('✅ Успешный ответ сервера через XMLHttpRequest', result);
         return result;
         
       } catch (error) {
