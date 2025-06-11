@@ -1,4 +1,5 @@
 import { logger } from '../src/utils/Logger';
+import * as FileSystem from 'expo-file-system';
 
 // API Service для работы с Backend
 const API_BASE_URL = 'https://contact-recorder-backend-production.up.railway.app';
@@ -205,33 +206,8 @@ class ApiService {
           logger.error('❌ Ошибка проверки URI файла', { error: (uriError as Error).message });
           throw uriError;
         }
-        
-        const formData = new FormData();
-        
-        // Сначала добавляем метаданные (обычные текстовые поля)
-        formData.append('duration_seconds', recordingData.duration_seconds.toString());
-        formData.append('location_id', recordingData.location_id.toString());
-        formData.append('recording_date', recordingData.recording_date);
-        formData.append('filename', recordingData.name);
-        
-        // Потом добавляем аудио файл с правильным форматом для React Native
-        const audioFile = {
-          uri: recordingData.uri,
-          type: recordingData.type,
-          name: recordingData.name,
-          filename: recordingData.name, // Дублируем для совместимости
-          size: undefined, // Размер будет определен автоматически
-        };
-        
-        logger.info('🔍 Создаем файл для загрузки', audioFile);
-        formData.append('audio', audioFile as any);
 
         const url = `${API_BASE_URL}/api/recordings/upload`;
-        
-        const headers: Record<string, string> = {};
-        if (this.token) {
-          headers['Authorization'] = `Bearer ${this.token}`;
-        }
 
         logger.info('📤 Отправка данных', {
           url,
@@ -255,79 +231,71 @@ class ApiService {
         logger.info('✅ Сервер доступен, отправляем файл...');
 
         // Дополнительная проверка данных перед отправкой
-        logger.info('🔍 Проверяем FormData перед отправкой', {
-          hasAudio: formData.has('audio'),
-          hasDuration: formData.has('duration_seconds'),
-          hasLocation: formData.has('location_id'),
-          hasDate: formData.has('recording_date'),
-          hasFilename: formData.has('filename'),
-          fieldOrder: 'ИСПРАВЛЕН: метаданные -> файл'
+        logger.info('🔍 Проверяем данные перед отправкой', {
+          hasUri: !!recordingData.uri,
+          hasType: !!recordingData.type,
+          hasName: !!recordingData.name,
+          hasDuration: !!recordingData.duration_seconds,
+          hasLocationId: !!recordingData.location_id,
+          hasDate: !!recordingData.recording_date,
+          fileExtension: recordingData.name.split('.').pop()
         });
 
-        // Используем XMLHttpRequest вместо fetch для обхода проблемы с GraphQL интерпретацией
-        logger.info('📤 Отправляем файл через XMLHttpRequest...');
+        // Используем expo-file-system.uploadAsync для обхода проблемы с GraphQL multipart
+        logger.info('📤 Отправляем файл через expo-file-system.uploadAsync...');
         
-        const result = await new Promise<any>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          
-          xhr.open('POST', url);
-          
-          // Устанавливаем заголовки
-          if (this.token) {
-            xhr.setRequestHeader('Authorization', `Bearer ${this.token}`);
-          }
-          // НЕ устанавливаем Content-Type - пусть браузер установит автоматически
-          
-          xhr.onload = () => {
-            logger.info('📥 XMLHttpRequest ответ получен', {
-              status: xhr.status,
-              statusText: xhr.statusText,
-              responseLength: xhr.responseText.length
-            });
-            
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                const responseData = JSON.parse(xhr.responseText);
-                resolve(responseData);
-              } catch (parseError) {
-                logger.error('❌ Ошибка парсинга ответа', {
-                  error: (parseError as Error).message,
-                  responseText: xhr.responseText.substring(0, 500)
-                });
-                reject(new Error('Ошибка парсинга ответа сервера'));
-              }
-            } else {
-              logger.error('❌ HTTP ошибка в XMLHttpRequest', {
-                status: xhr.status,
-                statusText: xhr.statusText,
-                responseText: xhr.responseText.substring(0, 500)
-              });
-              reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
-            }
-          };
-          
-          xhr.onerror = () => {
-            logger.error('❌ Ошибка сети в XMLHttpRequest', {
-              status: xhr.status,
-              statusText: xhr.statusText
-            });
-            reject(new Error('Ошибка сети при отправке файла'));
-          };
-          
-          xhr.ontimeout = () => {
-            logger.error('❌ Таймаут XMLHttpRequest');
-            reject(new Error('Таймаут при отправке файла'));
-          };
-          
-          // Устанавливаем таймаут 60 секунд
-          xhr.timeout = 60000;
-          
-          // Отправляем FormData
-          xhr.send(formData);
+        const uploadOptions = {
+          headers: {
+            'Authorization': this.token ? `Bearer ${this.token}` : '',
+          },
+          httpMethod: 'POST' as const,
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'audio',
+          mimeType: recordingData.type,
+          parameters: {
+            duration_seconds: recordingData.duration_seconds.toString(),
+            location_id: recordingData.location_id.toString(),
+            recording_date: recordingData.recording_date,
+            filename: recordingData.name,
+          },
+        };
+
+        logger.info('🔍 Параметры загрузки expo-file-system', {
+          uri: recordingData.uri,
+          url: url,
+          fieldName: uploadOptions.fieldName,
+          mimeType: uploadOptions.mimeType,
+          parameters: uploadOptions.parameters,
+          hasToken: !!this.token
         });
 
-        logger.info('✅ Успешный ответ сервера через XMLHttpRequest', result);
-        return result;
+        const uploadResult = await FileSystem.uploadAsync(recordingData.uri, url, uploadOptions);
+        
+        logger.info('📥 Ответ expo-file-system.uploadAsync', {
+          status: uploadResult.status,
+          body: uploadResult.body?.substring(0, 500),
+          headers: uploadResult.headers
+        });
+
+        if (uploadResult.status >= 200 && uploadResult.status < 300) {
+          try {
+            const result = JSON.parse(uploadResult.body);
+            logger.info('✅ Успешный ответ сервера через expo-file-system', result);
+            return result;
+          } catch (parseError) {
+            logger.error('❌ Ошибка парсинга ответа expo-file-system', {
+              error: (parseError as Error).message,
+              body: uploadResult.body?.substring(0, 500)
+            });
+            throw new Error('Ошибка парсинга ответа сервера');
+          }
+        } else {
+          logger.error('❌ HTTP ошибка в expo-file-system', {
+            status: uploadResult.status,
+            body: uploadResult.body?.substring(0, 500)
+          });
+          throw new Error(`HTTP ${uploadResult.status}: ${uploadResult.body}`);
+        }
         
       } catch (error) {
         lastError = error;
