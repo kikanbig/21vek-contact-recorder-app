@@ -163,7 +163,11 @@ class ApiService {
         }
         logger.info('✅ Успешная авторизация для загрузки файла');
       } catch (authError) {
-        logger.error('❌ Ошибка авторизации', authError);
+        logger.error('❌ Ошибка авторизации', {
+          message: (authError as Error).message,
+          stack: (authError as Error).stack,
+          name: (authError as Error).name
+        });
         return {
           success: false,
           message: 'Ошибка авторизации: ' + (authError as Error).message
@@ -179,6 +183,14 @@ class ApiService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         logger.info(`📤 Попытка загрузки ${attempt}/${maxRetries}...`);
+        
+        // Проверяем, что файл существует
+        logger.info('🔍 Проверяем аудио файл', {
+          uri: recordingData.uri,
+          type: recordingData.type,
+          name: recordingData.name,
+          exists: recordingData.uri.startsWith('file://')
+        });
         
         const formData = new FormData();
         
@@ -223,6 +235,15 @@ class ApiService {
         
         logger.info('✅ Сервер доступен, отправляем файл...');
 
+        // Дополнительная проверка данных перед отправкой
+        logger.info('🔍 Проверяем FormData перед отправкой', {
+          hasAudio: formData.has('audio'),
+          hasDuration: formData.has('duration_seconds'),
+          hasLocation: formData.has('location_id'),
+          hasDate: formData.has('recording_date'),
+          hasFilename: formData.has('filename')
+        });
+
         const response = await fetch(url, {
           method: 'POST',
           headers,
@@ -252,8 +273,13 @@ class ApiService {
       } catch (error) {
         lastError = error;
         logger.error(`❌ Ошибка попытки ${attempt}`, {
-          error: (error as Error).message,
-          stack: (error as Error).stack
+          message: (error as Error).message,
+          name: (error as Error).name,
+          stack: (error as Error).stack,
+          cause: (error as any).cause,
+          code: (error as any).code,
+          type: typeof error,
+          stringError: String(error)
         });
         
         if (attempt < maxRetries) {
@@ -264,7 +290,15 @@ class ApiService {
       }
     }
 
-    logger.error('❌ Все попытки загрузки неудачны', lastError);
+    logger.error('❌ Все попытки загрузки неудачны', {
+      message: (lastError as Error).message,
+      name: (lastError as Error).name,
+      stack: (lastError as Error).stack,
+      cause: (lastError as any).cause,
+      code: (lastError as any).code,
+      type: typeof lastError,
+      stringError: String(lastError)
+    });
     throw lastError;
   }
 

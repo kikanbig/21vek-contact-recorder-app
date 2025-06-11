@@ -166,7 +166,15 @@ export default function RecordingScreen({ user, location, onLogout, onShowRecord
           }
           
         } catch (serverError) {
-          logger.error('❌ Ошибка загрузки на сервер', serverError);
+          logger.error('❌ Ошибка загрузки на сервер', {
+            message: (serverError as Error).message,
+            name: (serverError as Error).name,
+            stack: (serverError as Error).stack,
+            cause: (serverError as any).cause,
+            code: (serverError as any).code,
+            type: typeof serverError,
+            stringError: String(serverError)
+          });
           
           // Сохраняем локально если не удалось загрузить на сервер
           const savedPath = await audioService.saveRecordingToDocuments(uri, filename);
