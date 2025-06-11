@@ -189,23 +189,42 @@ class ApiService {
           uri: recordingData.uri,
           type: recordingData.type,
           name: recordingData.name,
-          exists: recordingData.uri.startsWith('file://')
+          exists: recordingData.uri.startsWith('file://'),
+          fileExtension: recordingData.name.split('.').pop()
         });
+        
+        // Проверяем размер файла если возможно
+        try {
+          // Простая проверка что файл доступен
+          const uriCheck = recordingData.uri;
+          if (!uriCheck || !uriCheck.startsWith('file://')) {
+            throw new Error('Некорректный URI файла: ' + uriCheck);
+          }
+          logger.info('✅ URI файла проверен');
+        } catch (uriError) {
+          logger.error('❌ Ошибка проверки URI файла', { error: (uriError as Error).message });
+          throw uriError;
+        }
         
         const formData = new FormData();
         
-        // Сначала добавляем метаданные
+        // Сначала добавляем метаданные (обычные текстовые поля)
         formData.append('duration_seconds', recordingData.duration_seconds.toString());
         formData.append('location_id', recordingData.location_id.toString());
         formData.append('recording_date', recordingData.recording_date);
         formData.append('filename', recordingData.name);
         
-        // Потом добавляем аудио файл (должен быть последним!)
-        formData.append('audio', {
+        // Потом добавляем аудио файл с правильным форматом для React Native
+        const audioFile = {
           uri: recordingData.uri,
           type: recordingData.type,
           name: recordingData.name,
-        } as any);
+          filename: recordingData.name, // Дублируем для совместимости
+          size: undefined, // Размер будет определен автоматически
+        };
+        
+        logger.info('🔍 Создаем файл для загрузки', audioFile);
+        formData.append('audio', audioFile as any);
 
         const url = `${API_BASE_URL}/api/recordings/upload`;
         
@@ -248,7 +267,10 @@ class ApiService {
         const response = await fetch(url, {
           method: 'POST',
           headers,
-          body: formData
+          body: formData,
+          // Дополнительные опции для правильной обработки multipart/form-data
+          cache: 'no-cache',
+          redirect: 'follow'
         });
 
         logger.info('📥 Получен ответ сервера', {
