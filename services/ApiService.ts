@@ -153,7 +153,7 @@ class ApiService {
     if (!this.token) {
       console.warn('❌ Отсутствует токен авторизации, пытаемся авторизоваться...');
       try {
-        const authResponse = await this.login('продавец1', '123456');
+        const authResponse = await this.login('admin', 'admin123');
         if (!authResponse.success) {
           throw new Error('Не удалось авторизоваться для загрузки файла');
         }
